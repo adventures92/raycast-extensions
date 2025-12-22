@@ -1,7 +1,7 @@
 import { ActionPanel, Action, Icon, List } from "@raycast/api";
 import { Device } from "../types";
 import ConnectIpForm from "./ConnectIpForm";
-import AppList from "./AppList";
+import { AppList } from "./AppList";
 import DeviceActions from "./DeviceActions";
 
 interface DeviceListProps {
@@ -24,7 +24,7 @@ export default function DeviceList({ devices, isLoading, onRefresh }: DeviceList
               <Action.Push
                 title="Connect Via Network"
                 icon={Icon.Wifi}
-                target={<ConnectIpForm onConnect={onRefresh} />}
+                target={<ConnectIpForm onConnected={onRefresh} />}
               />
             </ActionPanel>
           }
@@ -45,13 +45,13 @@ export default function DeviceList({ devices, isLoading, onRefresh }: DeviceList
                 <Action.Push
                   title="Device Actions"
                   icon={Icon.WrenchScrewdriver}
-                  target={<DeviceActions device={device} />}
+                  target={<DeviceActions device={device} onRefresh={onRefresh} />}
                 />
                 <Action.Push
                   title="Connect Via Network"
                   icon={Icon.Wifi}
                   shortcut={{ modifiers: ["cmd"], key: "n" }}
-                  target={<ConnectIpForm onConnect={onRefresh} />}
+                  target={<ConnectIpForm onConnected={onRefresh} />}
                 />
                 <Action title="Refresh" icon={Icon.RotateClockwise} onAction={onRefresh} />
               </ActionPanel>

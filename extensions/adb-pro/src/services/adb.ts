@@ -1,12 +1,13 @@
 import { exec, spawn, ChildProcess } from "child_process";
 import { promisify } from "util";
 import { Device, AdbResult } from "../types";
-import { checkAdbPath } from "./environment";
+import { checkAdbPath, checkEmulatorPath } from "./environment";
 
 const execAsync = promisify(exec);
 
 class AdbService {
   private adbPath: string | null = null;
+  private emulatorPath: string | null = null;
 
   private async getAdb(): Promise<string> {
     if (this.adbPath) return this.adbPath;
@@ -15,6 +16,18 @@ class AdbService {
       throw new Error("ADB not found");
     }
     this.adbPath = path;
+    return path;
+  }
+
+  private async getEmulator(): Promise<string> {
+    if (this.emulatorPath) return this.emulatorPath;
+    const path = await checkEmulatorPath();
+    if (!path) {
+      // Fallback to searching basic paths if command above fails or weirdness.
+      // Better: Use checkAdb-like logic to find emulator binary?
+      return "emulator";
+    }
+    this.emulatorPath = path;
     return path;
   }
 
@@ -54,9 +67,12 @@ class AdbService {
           return {
             id,
             type,
+            state: type,
             model: modelPart,
             product: productPart,
+            device: parts.find((p) => p.startsWith("device:"))?.split(":")[1] || "Unknown",
             transportId: transportPart,
+            isWifi: id.includes(":") || id.startsWith("192.168"),
           };
         });
     } catch (error) {
@@ -141,13 +157,14 @@ class AdbService {
   }
   async listAVDs(): Promise<string[]> {
     try {
-      await this.exec(`-s emulator-5554 shell echo "ignore" && $HOME/Library/Android/sdk/emulator/emulator -list-avds`);
+      const emulator = await this.getEmulator();
+      await this.exec(`-s emulator-5554 shell echo "ignore" && "${emulator}" -list-avds`);
       // Fallback to searching basic paths if command above fails or weirdness.
       // Actually, 'emulator' might not be in path for exec, we need full path usually.
       // But for now let's hope it's in path or we use the specific path.
       // Better: Use checkAdb-like logic to find emulator binary?
       // For simplify, start with assuming 'emulator' is in path or standard location.
-      const res = await this.exec(`$HOME/Library/Android/sdk/emulator/emulator -list-avds`);
+      const res = await this.exec(`"${emulator}" -list-avds`);
       return res.split("\n").filter((l) => l.trim().length > 0);
     } catch {
       // Try just 'emulator'
@@ -168,7 +185,8 @@ class AdbService {
     // 'screen' or 'nohup' might be needed.
     // Actually best to use open -a Terminal or similar?
     // Let's try simple backgrounding `&`
-    return await this.exec(`$HOME/Library/Android/sdk/emulator/emulator @${avdName} &`);
+    const emulator = await this.getEmulator();
+    return await this.exec(`"${emulator}" @${avdName} &`);
   }
 
   async killEmulator(deviceId: string) {

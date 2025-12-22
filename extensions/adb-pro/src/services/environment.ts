@@ -50,6 +50,36 @@ export async function checkAdbPath(): Promise<string | null> {
   return null;
 }
 
+export async function checkEmulatorPath(): Promise<string | null> {
+  // 1. Check common system paths
+  const systemPaths = [
+    "/usr/bin/emulator",
+    "/usr/local/bin/emulator",
+    "/opt/homebrew/bin/emulator",
+    `${os.homedir()}/Library/Android/sdk/emulator/emulator`,
+    `${os.homedir()}/Android/Sdk/emulator/emulator`,
+  ];
+
+  for (const p of systemPaths) {
+    if (fs.existsSync(p)) {
+      return p;
+    }
+  }
+
+  // 2. Try 'which emulator'
+  try {
+    const { stdout } = await execAsync("which emulator");
+    const whichPath = stdout.trim();
+    if (whichPath && fs.existsSync(whichPath)) {
+      return whichPath;
+    }
+  } catch {
+    // ignore
+  }
+
+  return null;
+}
+
 export async function saveAdbPath(path: string) {
   await LocalStorage.setItem(ADB_PATH_KEY, path);
 }

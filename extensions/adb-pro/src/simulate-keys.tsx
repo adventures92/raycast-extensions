@@ -61,7 +61,7 @@ function KeyGrid({ device }: { device: Device }) {
         { name: "Enter", code: "66", icon: Icon.Check, color: Color.Green },
         { name: "Tab", code: "61", icon: Icon.Switch, color: Color.SecondaryText },
         { name: "Space", code: "62", icon: Icon.Minus, color: Color.SecondaryText },
-        { name: "Backspace", code: "67", icon: Icon.Delete, color: Color.Orange },
+        { name: "Backspace", code: "67", icon: Icon.Trash, color: Color.Orange },
       ],
     },
   ];

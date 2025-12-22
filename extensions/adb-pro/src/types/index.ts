@@ -1,9 +1,12 @@
 export interface Device {
   id: string;
-  type: "emulator" | "device" | "offline" | "unauthorized";
+  type: "emulator" | "device" | "offline" | "unauthorized"; // Known as 'state' in some contexts
+  state: string;
   model: string;
   product: string;
+  device: string;
   transportId: string;
+  isWifi: boolean;
 }
 
 export interface AdbResult {

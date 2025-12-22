@@ -8,9 +8,9 @@ export const parseDeviceList = (stdout: string): import("../types").Device[] => 
       // Example line: "emulator-5554	device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emulator64_arm64 transport_id:1"
       const parts = line.split(/\s+/);
       const id = parts[0];
-      const state = parts[1] as import("../types").Device["state"];
+      const state = parts[1];
 
-      if (!id) return null;
+      if (!id || !state) return null;
 
       const modelPart = parts.find((p) => p.startsWith("model:"));
       const productPart = parts.find((p) => p.startsWith("product:"));
@@ -19,6 +19,7 @@ export const parseDeviceList = (stdout: string): import("../types").Device[] => 
 
       return {
         id,
+        type: (state as import("../types").Device["type"]) || "device",
         state: state || "unknown",
         model: modelPart ? modelPart.split(":")[1] : "Unknown Model",
         product: productPart ? productPart.split(":")[1] : "",

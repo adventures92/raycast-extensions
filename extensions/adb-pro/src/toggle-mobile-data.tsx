@@ -46,7 +46,7 @@ function MobileDataControl({ device }: { device: Device }) {
     <List isLoading={isLoading} searchBarPlaceholder="Select option...">
       <List.Item
         title="Enable Mobile Data"
-        icon={{ source: Icon.AntennaSignalBars, tintColor: status === "enabled" ? Color.Green : Color.PrimaryText }}
+        icon={{ source: Icon.Mobile, tintColor: status === "enabled" ? Color.Green : Color.PrimaryText }}
         accessories={[{ text: status === "enabled" ? "Active" : "" }]}
         actions={
           <ActionPanel>

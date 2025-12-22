@@ -1,6 +1,6 @@
 import { ActionPanel, Action, Form, useNavigation, showToast, Toast, Icon } from "@raycast/api";
 import { useState } from "react";
-import { adbService } from "../services/adb";
+import { adb } from "../services/adb";
 import { Device } from "../types";
 
 export default function InputTextForm({ device }: { device: Device }) {
@@ -11,7 +11,7 @@ export default function InputTextForm({ device }: { device: Device }) {
   async function handleSubmit(values: { text: string }) {
     setIsLoading(true);
     try {
-      await adbService.sendText(device.id, values.text);
+      await adb.inputText(device.id, values.text);
       showToast({ style: Toast.Style.Success, title: "Sent", message: values.text });
       pop();
     } catch (error) {
