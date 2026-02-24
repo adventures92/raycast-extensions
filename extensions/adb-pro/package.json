@@ -4,7 +4,10 @@
   "title": "ADB Pro",
   "description": "The ultimate Android Debug Bridge (ADB) tool for Raycast. Manage devices, install APKs, view Logcat, and control permissions directly from your Raycast.",
   "icon": "extension-icon.png",
-  "author": "adventures92",
+  "author": "star_zero",
+  "contributors": [
+    "adventures92"
+  ],
   "platforms": [
     "macOS"
   ],
@@ -16,189 +19,189 @@
     {
       "name": "check-adb",
       "title": "Check ADB Status",
-      "subtitle": "System Health",
+      "subtitle": "ADB Pro",
       "description": "Verify if ADB is installed and properly configured in your system path.",
       "mode": "view"
     },
     {
       "name": "manage-devices",
       "title": "Manage Devices",
-      "subtitle": "ADB Dashboard",
+      "subtitle": "ADB Pro",
       "description": "The central hub to view all connected devices and their statuses.",
       "mode": "view"
     },
     {
       "name": "restart-adb",
       "title": "Restart ADB Server",
-      "subtitle": "Troubleshooting",
+      "subtitle": "ADB Pro",
       "description": "Kill and restart the ADB server if devices are not reflecting correctly.",
       "mode": "no-view"
     },
     {
       "name": "launch-app",
       "title": "Launch App",
-      "subtitle": "Start Activity",
+      "subtitle": "ADB Pro",
       "description": "Instantly start the main activity of the selected application.",
       "mode": "view"
     },
     {
       "name": "force-stop",
       "title": "Force Stop App",
-      "subtitle": "Kill Process",
+      "subtitle": "ADB Pro",
       "description": "Immediately stop a running application on the selected device.",
       "mode": "view"
     },
     {
       "name": "clear-data",
       "title": "Clear App Data",
-      "subtitle": "Reset App",
+      "subtitle": "ADB Pro",
       "description": "Wipe all data and cache for a specific application.",
       "mode": "view"
     },
     {
       "name": "uninstall-app",
       "title": "Uninstall App",
-      "subtitle": "Remove",
+      "subtitle": "ADB Pro",
       "description": "Remove an application from the selected device.",
       "mode": "view"
     },
     {
       "name": "open-app-settings",
       "title": "Open App Settings",
-      "subtitle": "System Settings",
+      "subtitle": "ADB Pro",
       "description": "Open the Android system settings page for the specific app.",
       "mode": "view"
     },
     {
       "name": "install-apk",
       "title": "Install APK",
-      "subtitle": "Deployment",
+      "subtitle": "ADB Pro",
       "description": "Select an APK from your computer and install it onto a device.",
       "mode": "view"
     },
     {
       "name": "toggle-wifi",
       "title": "Toggle WiFi",
-      "subtitle": "Network",
+      "subtitle": "ADB Pro",
       "description": "Enable or disable WiFi on the selected device.",
       "mode": "view"
     },
     {
       "name": "toggle-mobile-data",
       "title": "Toggle Mobile Data",
-      "subtitle": "Network",
+      "subtitle": "ADB Pro",
       "description": "Enable or disable Mobile Data on the selected device.",
       "mode": "view"
     },
     {
       "name": "toggle-airplane-mode",
       "title": "Toggle Airplane Mode",
-      "subtitle": "Network",
+      "subtitle": "ADB Pro",
       "description": "Switch Airplane Mode on or off.",
       "mode": "view"
     },
     {
       "name": "toggle-dark-mode",
       "title": "Toggle Dark Mode",
-      "subtitle": "UI Theme",
+      "subtitle": "ADB Pro",
       "description": "Switch system theme between Light and Dark mode.",
       "mode": "view"
     },
     {
       "name": "toggle-layout-bounds",
       "title": "Toggle Layout Bounds",
-      "subtitle": "Debugging",
+      "subtitle": "ADB Pro",
       "description": "Show or hide layout bounds for UI debugging.",
       "mode": "view"
     },
     {
       "name": "send-clipboard",
       "title": "Send Clipboard Text",
-      "subtitle": "Input",
+      "subtitle": "ADB Pro",
       "description": "Type your Mac's clipboard content into the device.",
       "mode": "view"
     },
     {
       "name": "launch-emulator",
       "title": "Launch Emulator",
-      "subtitle": "Virtual Device",
+      "subtitle": "ADB Pro",
       "description": "Start an Android Virtual Device (AVD).",
       "mode": "view"
     },
     {
       "name": "kill-emulator",
       "title": "Kill Emulator",
-      "subtitle": "Virtual Device",
+      "subtitle": "ADB Pro",
       "description": "Stop a running emulator instance.",
       "mode": "view"
     },
     {
       "name": "manage-permissions",
       "title": "Manage Permissions",
-      "subtitle": "Security",
+      "subtitle": "ADB Pro",
       "description": "Grant or revoke runtime permissions for an app.",
       "mode": "view"
     },
     {
       "name": "set-proxy",
       "title": "Set HTTP Proxy",
-      "subtitle": "Network",
+      "subtitle": "ADB Pro",
       "description": "Configure global HTTP proxy for debugging.",
       "mode": "view"
     },
     {
       "name": "view-logcat",
       "title": "View Logcat",
-      "subtitle": "Debugging",
+      "subtitle": "ADB Pro",
       "description": "View real-time logs from device.",
       "mode": "view"
     },
     {
       "name": "simulate-battery",
       "title": "Simulate Battery",
-      "subtitle": "Power",
+      "subtitle": "ADB Pro",
       "description": "Mock battery level and charging state.",
       "mode": "view"
     },
     {
       "name": "benchmark-start",
       "title": "Benchmark Cold Start",
-      "subtitle": "Performance",
+      "subtitle": "ADB Pro",
       "description": "Measure app cold start time.",
       "mode": "view"
     },
     {
       "name": "set-resolution",
       "title": "Change Resolution/DPI",
-      "subtitle": "UI Testing",
+      "subtitle": "ADB Pro",
       "description": "Override screen size and density.",
       "mode": "view"
     },
     {
       "name": "simulate-keys",
       "title": "Simulate Hardware Keys",
-      "subtitle": "Navigation",
+      "subtitle": "ADB Pro",
       "description": "Press Home, Back, Power, etc.",
       "mode": "view"
     },
     {
       "name": "wireless-connect",
       "title": "Wireless Debugging Wizard",
-      "subtitle": "Connectivity",
+      "subtitle": "ADB Pro",
       "description": "Switch to TCP/IP and connect wirelessly.",
       "mode": "view"
     },
     {
       "name": "mirror-screen",
       "title": "Mirror Screen (Scrcpy)",
-      "subtitle": "Tools",
+      "subtitle": "ADB Pro",
       "description": "Launch scrcpy to mirror device screen.",
       "mode": "view"
     },
     {
       "name": "firebase-debug",
       "title": "Firebase Debug Mode",
-      "subtitle": "Analytics",
+      "subtitle": "ADB Pro",
       "description": "Toggle Firebase Analytics debug mode.",
       "mode": "view"
     }
