@@ -21,7 +21,7 @@ function MobileDataControl({ device }: { device: Device }) {
     isLoading,
     revalidate,
   } = usePromise(async () => {
-    const output = await adb.exec(`-s ${device.id} shell settings get global mobile_data`);
+    const output = await adb.getGlobalSetting(device.id, "mobile_data");
     return output.trim() === "1" ? "enabled" : "disabled";
   }, []);
 

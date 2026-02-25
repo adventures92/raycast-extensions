@@ -21,8 +21,7 @@ function WifiControl({ device }: { device: Device }) {
     isLoading,
     revalidate,
   } = usePromise(async () => {
-    const output = await adb.exec(`-s ${device.id} shell dumpsys wifi | grep "Wi-Fi is"`);
-    return output.includes("enabled") ? "enabled" : "disabled";
+    return adb.getWifiStatus(device.id);
   }, []);
 
   async function setWifi(enable: boolean) {

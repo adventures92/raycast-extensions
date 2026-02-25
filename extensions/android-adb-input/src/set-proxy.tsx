@@ -3,6 +3,7 @@ import { adb } from "./services/adb";
 import { DevicePicker } from "./components/DevicePicker";
 import { useState } from "react";
 import { Device } from "./types";
+import { validateHost, validatePortValue } from "./services/validators";
 
 export default function SetProxy() {
   const [device, setDevice] = useState<Device | null>(null);
@@ -20,7 +21,9 @@ function ProxyForm({ device }: { device: Device }) {
   async function set(values: { host: string; port: string }) {
     const toast = await showToast({ style: Toast.Style.Animated, title: "Setting Proxy..." });
     try {
-      await adb.setProxy(device.id, values.host, values.port);
+      const host = validateHost(values.host);
+      const port = String(validatePortValue(values.port));
+      await adb.setProxy(device.id, host, port);
       toast.style = Toast.Style.Success;
       toast.title = "Proxy Set";
       pop();

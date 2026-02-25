@@ -1,13 +1,26 @@
-import { exec, spawn, ChildProcess } from "child_process";
-import { promisify } from "util";
+import { spawn, ChildProcess } from "child_process";
+import fs from "fs";
 import { Device, AdbResult } from "../types";
 import { checkAdbPath, checkEmulatorPath } from "./environment";
+import {
+  normalizeInputText,
+  validateDensity,
+  validateDeviceId,
+  validateHost,
+  validateKeycode,
+  validatePackageName,
+  validatePermissionName,
+  validatePortValue,
+  validateWmSize,
+} from "./validators";
 
-const execAsync = promisify(exec);
+const SETTING_KEY_PATTERN = /^[A-Za-z0-9_.]+$/;
+const AVD_NAME_PATTERN = /^[A-Za-z0-9_.()-]+$/;
 
 class AdbService {
   private adbPath: string | null = null;
   private emulatorPath: string | null = null;
+  private scrcpyPath: string | null = null;
 
   private async getAdb(): Promise<string> {
     if (this.adbPath) return this.adbPath;
@@ -23,24 +36,90 @@ class AdbService {
     if (this.emulatorPath) return this.emulatorPath;
     const path = await checkEmulatorPath();
     if (!path) {
-      // Fallback to searching basic paths if command above fails or weirdness.
-      // Better: Use checkAdb-like logic to find emulator binary?
       return "emulator";
     }
     this.emulatorPath = path;
     return path;
   }
 
-  async exec(command: string): Promise<string> {
+  private async getScrcpy(): Promise<string> {
+    if (this.scrcpyPath) return this.scrcpyPath;
+
+    const candidates = ["/opt/homebrew/bin/scrcpy", "/usr/local/bin/scrcpy", "/usr/bin/scrcpy", "scrcpy"];
+    const discovered = candidates.find((candidate) => candidate === "scrcpy" || fs.existsSync(candidate));
+
+    if (!discovered) {
+      throw new Error("scrcpy is not installed. Install it with: brew install scrcpy");
+    }
+
+    this.scrcpyPath = discovered;
+    return discovered;
+  }
+
+  private runCommand(binaryPath: string, args: string[]): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const child = spawn(binaryPath, args, { stdio: ["ignore", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+
+      child.stdout?.on("data", (chunk: Buffer | string) => {
+        stdout += chunk.toString();
+      });
+
+      child.stderr?.on("data", (chunk: Buffer | string) => {
+        stderr += chunk.toString();
+      });
+
+      child.on("error", (error) => {
+        reject(error);
+      });
+
+      child.on("close", (code) => {
+        if (code === 0) {
+          resolve(stdout.trim());
+          return;
+        }
+
+        const detail = stderr.trim() || stdout.trim() || `Process exited with code ${code ?? "unknown"}`;
+        reject(new Error(detail));
+      });
+    });
+  }
+
+  async runBinary(binaryPath: string, args: string[], options?: { detached?: boolean }): Promise<string> {
+    if (options?.detached) {
+      return new Promise((resolve, reject) => {
+        const child = spawn(binaryPath, args, { detached: true, stdio: "ignore" });
+
+        child.once("error", (error) => {
+          reject(error);
+        });
+
+        child.once("spawn", () => {
+          child.unref();
+          resolve("");
+        });
+      });
+    }
+
+    return this.runCommand(binaryPath, args);
+  }
+
+  async runAdb(args: string[]): Promise<string> {
     const adb = await this.getAdb();
-    const { stdout } = await execAsync(`"${adb}" ${command}`);
-    return stdout.trim();
+    return this.runBinary(adb, args);
+  }
+
+  async spawnAdb(args: string[]): Promise<ChildProcess> {
+    const adb = await this.getAdb();
+    return spawn(adb, args);
   }
 
   async getPid(deviceId: string, pkg: string): Promise<string | null> {
     try {
-      // pidof is available on most Android devices
-      const pid = await this.exec(`-s ${deviceId} shell pidof -s ${pkg}`);
+      const validDeviceId = validateDeviceId(deviceId);
+      const validPackage = validatePackageName(pkg);
+      const pid = await this.runAdb(["-s", validDeviceId, "shell", "pidof", "-s", validPackage]);
       return pid ? pid.trim() : null;
     } catch {
       return null;
@@ -49,13 +128,12 @@ class AdbService {
 
   async listDevices(): Promise<Device[]> {
     try {
-      const output = await this.exec("devices -l");
-      const lines = output.split("\n").slice(1); // skip "List of devices attached"
+      const output = await this.runAdb(["devices", "-l"]);
+      const lines = output.split("\n").slice(1);
 
       return lines
         .filter((line) => line.trim() !== "")
         .map((line) => {
-          // Format: "emulator-5554 device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emulator64_arm64 transport_id:1"
           const parts = line.split(/\s+/);
           const id = parts[0];
           const type = parts[1] as Device["type"];
@@ -82,15 +160,17 @@ class AdbService {
   }
 
   async spawnLogcat(deviceId: string): Promise<ChildProcess> {
-    const adb = await this.getAdb();
-    return spawn(adb, ["-s", deviceId, "logcat", "-v", "threadtime"]);
+    const validDeviceId = validateDeviceId(deviceId);
+    return this.spawnAdb(["-s", validDeviceId, "logcat", "-v", "threadtime"]);
   }
 
   async connectWireless(ip: string, port: string = "5555"): Promise<AdbResult> {
     try {
-      const output = await this.exec(`connect ${ip}:${port}`);
-      if (output.includes("connected to")) {
-        return { success: true, message: `Connected to ${ip}:${port}` };
+      const host = validateHost(ip);
+      const portNumber = validatePortValue(port);
+      const output = await this.runAdb(["connect", `${host}:${portNumber}`]);
+      if (output.includes("connected to") || output.includes("already connected to")) {
+        return { success: true, message: `Connected to ${host}:${portNumber}` };
       }
       return { success: false, message: output };
     } catch (e: unknown) {
@@ -98,78 +178,140 @@ class AdbService {
     }
   }
 
+  async connect(ip: string, port: number = 5555): Promise<string> {
+    const host = validateHost(ip);
+    const portNumber = validatePortValue(port);
+    return this.runAdb(["connect", `${host}:${portNumber}`]);
+  }
+
   async restartServer(): Promise<AdbResult> {
     try {
-      await this.exec("kill-server");
-      await this.exec("start-server");
+      await this.runAdb(["kill-server"]);
+      await this.runAdb(["start-server"]);
       return { success: true, message: "ADB Server restarted successfully" };
     } catch (e: unknown) {
       return { success: false, message: e instanceof Error ? e.message : String(e) };
     }
   }
-  async toggleWifi(deviceId: string, enable: boolean) {
-    return await this.exec(`-s ${deviceId} shell svc wifi ${enable ? "enable" : "disable"}`);
+
+  async toggleWifi(deviceId: string, enable: boolean): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    return this.runAdb(["-s", validDeviceId, "shell", "svc", "wifi", enable ? "enable" : "disable"]);
   }
 
-  async toggleMobileData(deviceId: string, enable: boolean) {
-    return await this.exec(`-s ${deviceId} shell svc data ${enable ? "enable" : "disable"}`);
+  async toggleMobileData(deviceId: string, enable: boolean): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    return this.runAdb(["-s", validDeviceId, "shell", "svc", "data", enable ? "enable" : "disable"]);
   }
 
-  async toggleAirplaneMode(deviceId: string, enable: boolean) {
-    // Airplane mode requires two steps: setting the global setting and broadcasting the intent
-    await this.exec(`-s ${deviceId} shell settings put global airplane_mode_on ${enable ? "1" : "0"}`);
-    return await this.exec(
-      `-s ${deviceId} shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state ${enable}`,
-    );
+  async getGlobalSetting(deviceId: string, key: string): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const validKey = key.trim();
+    if (!SETTING_KEY_PATTERN.test(validKey)) {
+      throw new Error(`Invalid settings key "${key}".`);
+    }
+    return this.runAdb(["-s", validDeviceId, "shell", "settings", "get", "global", validKey]);
   }
 
-  async toggleDarkMode(deviceId: string, enable: boolean) {
-    return await this.exec(`-s ${deviceId} shell cmd uimode night ${enable ? "yes" : "no"}`);
+  async toggleAirplaneMode(deviceId: string, enable: boolean): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    await this.runAdb([
+      "-s",
+      validDeviceId,
+      "shell",
+      "settings",
+      "put",
+      "global",
+      "airplane_mode_on",
+      enable ? "1" : "0",
+    ]);
+    return this.runAdb([
+      "-s",
+      validDeviceId,
+      "shell",
+      "am",
+      "broadcast",
+      "-a",
+      "android.intent.action.AIRPLANE_MODE",
+      "--ez",
+      "state",
+      enable ? "true" : "false",
+    ]);
   }
 
-  async toggleLayoutBounds(deviceId: string, enable: boolean) {
-    // Requires System Properties debug.layout=true/false and then poking the system properties
-    await this.exec(`-s ${deviceId} shell setprop debug.layout ${enable ? "true" : "false"}`);
-    return await this.exec(`-s ${deviceId} shell service call activity 1599295570`); // Force layout update (SYSPROPS_TRANSACTION)
+  async toggleDarkMode(deviceId: string, enable: boolean): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    return this.runAdb(["-s", validDeviceId, "shell", "cmd", "uimode", "night", enable ? "yes" : "no"]);
   }
 
-  async inputText(deviceId: string, text: string) {
-    // Escape only characters that are special inside double quotes in shell: \ " ` $
-    // AND replace spaces with %s for Android input command.
-    // Note: Emojis and non-ASCII characters are generally not supported by 'input text'.
-    const escaped = text
-      .replace(/\\/g, "\\\\") // Must be first
-      .replace(/"/g, '\\"')
-      .replace(/`/g, "\\`")
-      .replace(/\$/g, "\\$")
-      .replace(/ /g, "%s");
-
+  async getDarkModeStatus(deviceId: string): Promise<"dark" | "light" | "unknown"> {
     try {
-      return await this.exec(`-s ${deviceId} shell input text "${escaped}"`);
-    } catch (e: unknown) {
-      // If valid command failed, it's likely due to unsupported characters (Emojis etc)
-      // eslint-disable-next-line no-control-regex
-      if (/[^\x00-\x7F]/.test(text)) {
-        throw new Error("Emojis and non-ASCII characters are not supported via ADB Input.");
-      }
-      throw e;
+      const validDeviceId = validateDeviceId(deviceId);
+      const output = await this.runAdb(["-s", validDeviceId, "shell", "dumpsys", "uimode"]);
+      const matchedLine = output
+        .split("\n")
+        .map((line) => line.trim())
+        .find((line) => line.includes("mNightMode="));
+      if (!matchedLine) return "unknown";
+      return matchedLine.includes("yes") ? "dark" : "light";
+    } catch {
+      return "unknown";
     }
   }
+
+  async toggleLayoutBounds(deviceId: string, enable: boolean): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    await this.runAdb(["-s", validDeviceId, "shell", "setprop", "debug.layout", enable ? "true" : "false"]);
+    return this.runAdb(["-s", validDeviceId, "shell", "service", "call", "activity", "1599295570"]);
+  }
+
+  async getSystemProperty(deviceId: string, propertyName: string): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const validProperty = propertyName.trim();
+    if (!SETTING_KEY_PATTERN.test(validProperty)) {
+      throw new Error(`Invalid property name "${propertyName}".`);
+    }
+    return this.runAdb(["-s", validDeviceId, "shell", "getprop", validProperty]);
+  }
+
+  async getWifiStatus(deviceId: string): Promise<"enabled" | "disabled" | "unknown"> {
+    try {
+      const validDeviceId = validateDeviceId(deviceId);
+      const output = await this.runAdb(["-s", validDeviceId, "shell", "dumpsys", "wifi"]);
+      const statusLine = output
+        .split("\n")
+        .map((line) => line.trim())
+        .find((line) => line.includes("Wi-Fi is "));
+      if (!statusLine) return "unknown";
+      if (statusLine.includes("enabled")) return "enabled";
+      if (statusLine.includes("disabled")) return "disabled";
+      return "unknown";
+    } catch {
+      return "unknown";
+    }
+  }
+
+  async inputText(deviceId: string, text: string): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const normalizedText = normalizeInputText(text);
+    return this.runAdb(["-s", validDeviceId, "shell", "input", "text", normalizedText]);
+  }
+
+  async getWlanIpAddress(deviceId: string): Promise<string | null> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const output = await this.runAdb(["-s", validDeviceId, "shell", "ip", "-f", "inet", "addr", "show", "wlan0"]);
+    const match = output.match(/inet\s+(\d+\.\d+\.\d+\.\d+)\//);
+    return match ? match[1] : null;
+  }
+
   async listAVDs(): Promise<string[]> {
     try {
       const emulator = await this.getEmulator();
-      await this.exec(`-s emulator-5554 shell echo "ignore" && "${emulator}" -list-avds`);
-      // Fallback to searching basic paths if command above fails or weirdness.
-      // Actually, 'emulator' might not be in path for exec, we need full path usually.
-      // But for now let's hope it's in path or we use the specific path.
-      // Better: Use checkAdb-like logic to find emulator binary?
-      // For simplify, start with assuming 'emulator' is in path or standard location.
-      const res = await this.exec(`"${emulator}" -list-avds`);
+      const res = await this.runBinary(emulator, ["-list-avds"]);
       return res.split("\n").filter((l) => l.trim().length > 0);
     } catch {
-      // Try just 'emulator'
       try {
-        const res = await this.exec(`emulator -list-avds`);
+        const res = await this.runBinary("emulator", ["-list-avds"]);
         return res.split("\n").filter((l) => l.trim().length > 0);
       } catch {
         return [];
@@ -177,26 +319,24 @@ class AdbService {
     }
   }
 
-  async launchAVD(avdName: string) {
-    // -dns-server 8.8.8.8 ensures internet often works better
-    // Spawn detached process ideally, but here we just run it.
-    // Needs nohup or similar to keep running after command returns?
-    // Raycast might kill it. We'll use a detached spawn ideally, but exec waits.
-    // 'screen' or 'nohup' might be needed.
-    // Actually best to use open -a Terminal or similar?
-    // Let's try simple backgrounding `&`
+  async launchAVD(avdName: string): Promise<string> {
     const emulator = await this.getEmulator();
-    return await this.exec(`"${emulator}" @${avdName} &`);
+    const validAvdName = avdName.trim();
+    if (!AVD_NAME_PATTERN.test(validAvdName)) {
+      throw new Error(`Invalid AVD name "${avdName}".`);
+    }
+    return this.runBinary(emulator, [`@${validAvdName}`], { detached: true });
   }
 
-  async killEmulator(deviceId: string) {
-    return await this.exec(`-s ${deviceId} emu kill`);
+  async killEmulator(deviceId: string): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    return this.runAdb(["-s", validDeviceId, "emu", "kill"]);
   }
 
-  // --- Permissions ---
   async getPermissions(deviceId: string, pkg: string): Promise<{ name: string; granted: boolean }[]> {
-    const output = await this.exec(`-s ${deviceId} shell dumpsys package ${pkg}`);
-    // Basic parsing of "runtime permissions:" section
+    const validDeviceId = validateDeviceId(deviceId);
+    const validPackage = validatePackageName(pkg);
+    const output = await this.runAdb(["-s", validDeviceId, "shell", "dumpsys", "package", validPackage]);
     const lines = output.split("\n");
     const permissions: { name: string; granted: boolean }[] = [];
     let inPermissions = false;
@@ -207,7 +347,7 @@ class AdbService {
         continue;
       }
       if (inPermissions) {
-        if (line.trim() === "" || !line.includes(":")) break; // End of section
+        if (line.trim() === "" || !line.includes(":")) break;
         const parts = line.split(":");
         const name = parts[0].trim();
         const granted = parts[1].includes("true");
@@ -217,73 +357,180 @@ class AdbService {
     return permissions;
   }
 
-  async grantPermission(deviceId: string, pkg: string, permission: string) {
-    return await this.exec(`-s ${deviceId} shell pm grant ${pkg} ${permission}`);
+  async grantPermission(deviceId: string, pkg: string, permission: string): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const validPackage = validatePackageName(pkg);
+    const validPermission = validatePermissionName(permission);
+    return this.runAdb(["-s", validDeviceId, "shell", "pm", "grant", validPackage, validPermission]);
   }
 
-  async revokePermission(deviceId: string, pkg: string, permission: string) {
-    return await this.exec(`-s ${deviceId} shell pm revoke ${pkg} ${permission}`);
+  async revokePermission(deviceId: string, pkg: string, permission: string): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const validPackage = validatePackageName(pkg);
+    const validPermission = validatePermissionName(permission);
+    return this.runAdb(["-s", validDeviceId, "shell", "pm", "revoke", validPackage, validPermission]);
   }
 
-  // --- Proxy ---
-  async setProxy(deviceId: string, host: string, port: string) {
-    return await this.exec(`-s ${deviceId} shell settings put global http_proxy ${host}:${port}`);
+  async setProxy(deviceId: string, host: string, port: string): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const validHost = validateHost(host);
+    const validPort = validatePortValue(port);
+    return this.runAdb([
+      "-s",
+      validDeviceId,
+      "shell",
+      "settings",
+      "put",
+      "global",
+      "http_proxy",
+      `${validHost}:${validPort}`,
+    ]);
   }
 
-  async clearProxy(deviceId: string) {
-    return await this.exec(`-s ${deviceId} shell settings put global http_proxy :0`);
+  async clearProxy(deviceId: string): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    return this.runAdb(["-s", validDeviceId, "shell", "settings", "put", "global", "http_proxy", ":0"]);
   }
 
-  // --- Window Manager ---
-  async setSize(deviceId: string, size: string) {
-    return await this.exec(`-s ${deviceId} shell wm size ${size}`);
+  async setSize(deviceId: string, size: string): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const validSize = validateWmSize(size);
+    return this.runAdb(["-s", validDeviceId, "shell", "wm", "size", validSize]);
   }
 
-  async setDensity(deviceId: string, density: string) {
-    return await this.exec(`-s ${deviceId} shell wm density ${density}`);
+  async setDensity(deviceId: string, density: string): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const validDensity = validateDensity(density);
+    return this.runAdb(["-s", validDeviceId, "shell", "wm", "density", validDensity]);
   }
 
-  async resetDisplay(deviceId: string) {
-    await this.exec(`-s ${deviceId} shell wm size reset`);
-    await this.exec(`-s ${deviceId} shell wm density reset`);
+  async resetDisplay(deviceId: string): Promise<void> {
+    const validDeviceId = validateDeviceId(deviceId);
+    await this.runAdb(["-s", validDeviceId, "shell", "wm", "size", "reset"]);
+    await this.runAdb(["-s", validDeviceId, "shell", "wm", "density", "reset"]);
   }
 
-  // --- Input ---
-  async sendKeyEvent(deviceId: string, keycode: string) {
-    return await this.exec(`-s ${deviceId} shell input keyevent ${keycode}`);
-  }
-  // --- Wireless ---
-  async tcpip(deviceId: string, port: number = 5555) {
-    return await this.exec(`-s ${deviceId} tcpip ${port}`);
+  async sendKeyEvent(deviceId: string, keycode: string): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const validKeycode = validateKeycode(keycode);
+    return this.runAdb(["-s", validDeviceId, "shell", "input", "keyevent", validKeycode]);
   }
 
-  async connect(ip: string, port: number = 5555) {
-    return await this.exec(`connect ${ip}:${port}`);
+  async tcpip(deviceId: string, port: number = 5555): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const validPort = validatePortValue(port);
+    return this.runAdb(["-s", validDeviceId, "tcpip", String(validPort)]);
   }
 
-  // --- Scrcpy ---
-  async mirrorScreen(deviceId: string) {
-    // Try to find scrcpy
+  async mirrorScreen(deviceId: string): Promise<void> {
+    const validDeviceId = validateDeviceId(deviceId);
     try {
-      // We use 'scrcpy -s <id>'
-      // We need to run this so it persists.
-      // Using nohup & to detach might work best in this environment.
-      // But we need the path.
-      // Assume it's in path or brew.
-      const cmd = `scrcpy -s ${deviceId} > /dev/null 2>&1 &`;
-      return await this.exec(cmd);
-    } catch {
-      throw new Error("Could not start scrcpy. Is it installed? (brew install scrcpy)");
+      const scrcpy = await this.getScrcpy();
+      const adb = await this.getAdb();
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(scrcpy, ["-s", validDeviceId], {
+          detached: true,
+          stdio: ["ignore", "ignore", "pipe"],
+          env: { ...process.env, ADB: adb },
+        });
+        let stderr = "";
+        let resolved = false;
+
+        child.stderr?.on("data", (chunk: Buffer | string) => {
+          stderr += chunk.toString();
+        });
+
+        child.once("error", (error) => {
+          if (resolved) return;
+          resolved = true;
+          reject(error);
+        });
+
+        child.once("close", (code) => {
+          if (resolved) return;
+          resolved = true;
+          const reason = stderr.trim() || `scrcpy exited with code ${code ?? "unknown"}.`;
+          reject(new Error(reason));
+        });
+
+        // Consider startup successful only if it survives the first moment.
+        setTimeout(() => {
+          if (resolved) return;
+          resolved = true;
+          child.unref();
+          resolve();
+        }, 1200);
+      });
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        throw new Error("scrcpy was not found in PATH. Install it with: brew install scrcpy");
+      }
+      if (error instanceof Error) {
+        throw new Error(`Could not start scrcpy: ${error.message}`);
+      }
+      throw new Error("Could not start scrcpy.");
     }
   }
 
-  // --- Firebase ---
-  async enableFirebaseDebug(deviceId: string, pkg: string) {
-    await this.exec(`-s ${deviceId} shell setprop debug.firebase.analytics.app ${pkg}`);
+  async enableFirebaseDebug(deviceId: string, pkg: string): Promise<void> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const validPackage = validatePackageName(pkg);
+    await this.runAdb(["-s", validDeviceId, "shell", "setprop", "debug.firebase.analytics.app", validPackage]);
   }
 
-  async disableFirebaseDebug(deviceId: string) {
-    await this.exec(`-s ${deviceId} shell setprop debug.firebase.analytics.app .none.`);
+  async disableFirebaseDebug(deviceId: string): Promise<void> {
+    const validDeviceId = validateDeviceId(deviceId);
+    await this.runAdb(["-s", validDeviceId, "shell", "setprop", "debug.firebase.analytics.app", ".none."]);
+  }
+
+  async resolveLaunchableActivity(deviceId: string, pkg: string): Promise<string | null> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const validPackage = validatePackageName(pkg);
+    const output = await this.runAdb([
+      "-s",
+      validDeviceId,
+      "shell",
+      "cmd",
+      "package",
+      "resolve-activity",
+      "--brief",
+      validPackage,
+    ]);
+    const lines = output
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return null;
+    const candidate = lines[lines.length - 1];
+    if (candidate === "No activity found") return null;
+    return candidate;
+  }
+
+  async startActivityAndWait(deviceId: string, activityComponent: string): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    const validActivity = activityComponent.trim();
+    if (!validActivity || /\s/.test(validActivity)) {
+      throw new Error(`Invalid activity component "${activityComponent}".`);
+    }
+    return this.runAdb(["-s", validDeviceId, "shell", "am", "start", "-W", "-n", validActivity]);
+  }
+
+  async setBatteryUsb(deviceId: string, connected: boolean): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    return this.runAdb(["-s", validDeviceId, "shell", "dumpsys", "battery", "set", "usb", connected ? "1" : "0"]);
+  }
+
+  async setBatteryLevel(deviceId: string, level: number): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    if (!Number.isInteger(level) || level < 0 || level > 100) {
+      throw new Error("Battery level must be between 0 and 100.");
+    }
+    return this.runAdb(["-s", validDeviceId, "shell", "dumpsys", "battery", "set", "level", String(level)]);
+  }
+
+  async resetBattery(deviceId: string): Promise<string> {
+    const validDeviceId = validateDeviceId(deviceId);
+    return this.runAdb(["-s", validDeviceId, "shell", "dumpsys", "battery", "reset"]);
   }
 }
 

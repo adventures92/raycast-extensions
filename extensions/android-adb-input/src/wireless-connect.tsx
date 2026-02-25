@@ -2,6 +2,7 @@ import { ActionPanel, Action, Form, showToast, Toast, List, Icon, useNavigation 
 import { adb } from "./services/adb";
 import { usePromise } from "@raycast/utils";
 import { Device } from "./types";
+import { validateHost, validatePortValue } from "./services/validators";
 
 export default function WirelessConnect() {
   // We offer two modes:
@@ -52,14 +53,8 @@ export function SwitchToWifi({ device }: { device: Device }) {
     const toast = await showToast({ style: Toast.Style.Animated, title: "Preparing..." });
 
     try {
-      // Try to fetch IP, but ignore failure (device might already be acting up or logic differs)
       try {
-        const output = await adb.exec(
-          `-s ${device.id} shell "ip addr show wlan0 | grep 'inet ' | cut -d' ' -f6 | cut -d/ -f1"`,
-        );
-        if (output && output.trim().length > 0) {
-          ip = output.trim();
-        }
+        ip = await adb.getWlanIpAddress(device.id);
       } catch (ignore) {
         console.log("Failed to fetch IP (ignoring):", ignore);
       }
@@ -108,7 +103,9 @@ export function ConnectIpForm() {
   async function connect(values: { ip: string; port: string }) {
     const toast = await showToast({ style: Toast.Style.Animated, title: `Connecting to ${values.ip}...` });
     try {
-      const res = await adb.connect(values.ip, parseInt(values.port));
+      const host = validateHost(values.ip);
+      const port = validatePortValue(values.port);
+      const res = await adb.connect(host, port);
       if (res.includes("connected")) {
         toast.style = Toast.Style.Success;
         toast.title = "Connected!";

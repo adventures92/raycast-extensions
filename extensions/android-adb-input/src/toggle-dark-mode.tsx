@@ -16,18 +16,7 @@ export default function ToggleDarkMode() {
 }
 
 function DarkModeControl({ device }: { device: Device }) {
-  const {
-    data: status,
-    isLoading,
-    revalidate,
-  } = usePromise(async () => {
-    try {
-      const output = await adb.exec(`-s ${device.id} shell dumpsys uimode | grep mNightMode`);
-      return output.includes("yes") ? "dark" : "light";
-    } catch {
-      return "unknown";
-    }
-  }, []);
+  const { data: status, isLoading, revalidate } = usePromise(async () => adb.getDarkModeStatus(device.id), []);
 
   async function setMode(enable: boolean) {
     const toast = await showToast({ style: Toast.Style.Animated, title: "Switching Mode..." });

@@ -21,7 +21,7 @@ function LayoutBoundsControl({ device }: { device: Device }) {
     isLoading,
     revalidate,
   } = usePromise(async () => {
-    const output = await adb.exec(`-s ${device.id} shell getprop debug.layout`);
+    const output = await adb.getSystemProperty(device.id, "debug.layout");
     return output.trim() === "true" ? "enabled" : "disabled";
   }, []);
 

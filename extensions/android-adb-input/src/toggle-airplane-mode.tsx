@@ -21,7 +21,7 @@ function AirplaneModeControl({ device }: { device: Device }) {
     isLoading,
     revalidate,
   } = usePromise(async () => {
-    const output = await adb.exec(`-s ${device.id} shell settings get global airplane_mode_on`);
+    const output = await adb.getGlobalSetting(device.id, "airplane_mode_on");
     return output.trim() === "1" ? "enabled" : "disabled";
   }, []);
 

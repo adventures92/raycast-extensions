@@ -20,14 +20,10 @@ function BatteryForm({ device }: { device: Device }) {
   async function setBattery(values: { level: string; status: string }) {
     const toast = await showToast({ style: Toast.Style.Animated, title: "Updating Battery..." });
     try {
-      // First we need to unplug it virtually
-      await adb.exec(`-s ${device.id} shell dumpsys battery set usb 0`);
+      await adb.setBatteryUsb(device.id, false);
 
-      // Set level
       const level = parseInt(values.level);
-      await adb.exec(`-s ${device.id} shell dumpsys battery set level ${level}`);
-
-      // Set status (not exposed in form yet, but implied by unplug)
+      await adb.setBatteryLevel(device.id, level);
 
       toast.style = Toast.Style.Success;
       toast.title = `Battery set to ${level}%`;
@@ -42,7 +38,7 @@ function BatteryForm({ device }: { device: Device }) {
   async function reset() {
     const toast = await showToast({ style: Toast.Style.Animated, title: "Resetting Battery..." });
     try {
-      await adb.exec(`-s ${device.id} shell dumpsys battery reset`);
+      await adb.resetBattery(device.id);
       toast.style = Toast.Style.Success;
       toast.title = "Battery Reset";
       pop();
